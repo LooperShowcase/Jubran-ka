@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script defer>
+    const buttonOne = document.getElementById('button-one');
+        const buttonTwo = document.getElementById('button-two');
+        
+        const elementOne = document.getElementById('one');
+        const elementTwo = document.getElementById('two');
+        
+        buttonOne.addEventListener('click', clickOnButtonOne);
+        buttonTwo.addEventListener('click', clickOnButtonTwo);
+        
+        let selectedElement = null;
+        
+        function clickOnButtonOne() {
+          selectedElement = elementOne;
+        }
+        
+        function clickOnButtonTwo() {
+          selectedElement = elementTwo;
+        }
+        
+        document.onkeydown = detectKey;
+        
+        function detectKey(e) {
+          if (selectedElement) {
+            if (e.keyCode == '39') {
+              var posLeft = selectedElement.offsetLeft
+              selectedElement.style.left = (posLeft + 50) + "px"
+            }
+            if (e.keyCode == '38') {
+              var posTop = selectedElement.offsetTop
+              selectedElement.style.top = (posTop - 50) + "px"
+            }
+          }
+        }</script>
+        <style>
+            .counter {
+          border-radius: 50%;
+          width: 20px;
+          height: 20px;
+          position: absolute;
+          transition: top linear 0.6s, left linear 0.6s;
+          font-size: 20px;
+          font-weight: bold;
+          text-align: center;
+          padding: 20px;
+          top: 500px;
+          left: 60px;
+          background-color: red;
+        }
+        </style>
+</head>
+<body>
+
+
+<button id="button-one">Move One</button>
+<button id="button-two">Move Two</button>
+
+<div class="counter" id="one">1</div>
+<div class="counter" id="two">2</div>
+</body>
+</html>

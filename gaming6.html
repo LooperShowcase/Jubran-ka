@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bowling Game</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background-color: #222;
+        color: white;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+
+      canvas {
+        background: #555;
+        border: 3px solid #fff;
+      }
+
+      button {
+        margin-top: 10px;
+        padding: 10px 20px;
+        font-size: 18px;
+        cursor: pointer;
+        border: none;
+        border-radius: 5px;
+        background-color: #ff4444;
+        color: white;
+      }
+
+      button:hover {
+        background-color: #ff0000;
+      }
+
+      #controls {
+        margin-top: 20px;
+        display: flex;
+        gap: 10px;
+      }
+
+      #leftBtn,
+      #rightBtn {
+        padding: 10px 20px;
+        font-size: 18px;
+        cursor: pointer;
+        border: none;
+        border-radius: 5px;
+        background-color: #4caf50;
+        color: white;
+      }
+
+      #leftBtn:hover,
+      #rightBtn:hover {
+        background-color: #45a049;
+      }
+
+      #restartBtn {
+        background-color: #3498db;
+      }
+
+      #restartBtn:hover {
+        background-color: #2980b9;
+      }
+
+      #gameTitle {
+        font-size: 30px;
+        margin-top: 20px;
+        color: #fff;
+      }
+
+      #score {
+        font-size: 24px;
+        margin-top: 10px;
+        color: #fff;
+      }
+
+      #videoContainer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+      }
+
+      #videoContainer iframe {
+        width: 80%;
+        height: 80%;
+        max-width: 800px;
+        max-height: 600px;
+      }
+
+      #closeVideo {
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background-color: white;
+        color: black;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h2 id="gameTitle">Bowling Game</h2>
+    <div id="score">Pins Hit: 0</div>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <div id="controls">
+      <button id="leftBtn">Turn Left</button>
+      <button id="rightBtn">Turn Right</button>
+      <button onclick="rollBall()">Roll Ball</button>
+      <button id="restartBtn" onclick="resetGame()">Restart Game</button>
+    </div>
+
+    <div id="videoContainer">
+      <button id="closeVideo">Close</button>
+      <iframe
+        id="strikeVideo"
+        width="560"
+        height="315"
+        src=""
+        frameborder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen
+      ></iframe>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const scoreDisplay = document.getElementById("score");
+      const videoContainer = document.getElementById("videoContainer");
+      const strikeVideo = document.getElementById("strikeVideo");
+      const closeVideo = document.getElementById("closeVideo");
+
+      let pinsHit = 0;
+      let totalPins = 10;
+      let isFirstRoll = true; // Track if this is the first roll in a frame
+      let rollHistory = []; // Track pins hit in previous rolls
+      let isSpare = false; // Track if the user got a spare
+
+      let ball = {
+        x: 200,
+        y: 550,
+        radius: 20, // Increased ball size
+        speed: 15,
+        angle: Math.PI / 2, // Initially pointing upwards (90 degrees in radians)
+        moving: false,
+        friction: 0.98,
+        isDragging: false,
+        rotationSpeed: 0, // For smooth rotation
+        rotation: 0, // Current rotation angle for ball spinning
+      };
+
+      let pins = [];
+      const gravity = 0.2; // Gravity constant for falling pins
+      const pinLift = -6; // Slight upward force to make the pin "jump" when hit
+      const pinRadius = 10; // Radius for pin collision detection
+
+      // Create pins in a more centered and tighter arrangement
+      function setupPins() {
+        pins = [];
+
+        // Center point for the pins (horizontally centered, higher up vertically)
+        const centerX = canvas.width / 2;
+        const topY = 100; // Higher up for better visibility
+        const pinSpacing = 30; // Closer spacing between pins
+
+        // Define the pin positions in a triangular pattern
+        const pinPositions = [
+          // Top pin (single pin at the top)
+          { x: centerX - 10, y: topY },
+
+          // Second row of 2 pins
+          { x: centerX - 25, y: topY + pinSpacing },
+          { x: centerX + 5, y: topY + pinSpacing },
+
+          // Third row of 3 pins
+          { x: centerX - 40, y: topY + pinSpacing * 2 },
+          { x: centerX - 10, y: topY + pinSpacing * 2 },
+          { x: centerX + 20, y: topY + pinSpacing * 2 },
+
+          // Fourth row of 4 pins
+          { x: centerX - 55, y: topY + pinSpacing * 3 },
+          { x: centerX - 25, y: topY + pinSpacing * 3 },
+          { x: centerX + 5, y: topY + pinSpacing * 3 },
+          { x: centerX + 35, y: topY + pinSpacing * 3 },
+        ];
+
+        // Create pins at each position
+        pinPositions.forEach((pos, index) => {
+          pins.push({
+            x: pos.x,
+            y: pos.y,
+            fallen: false,
+            dx: 0, // Horizontal velocity for pin-to-pin collision
+            dy: 0, // Vertical velocity for gravity
+            rotation: 0, // Pin rotation speed
+            lifted: false, // Flag to indicate if the pin was lifted before falling
+            id: index, // Give each pin a unique ID for collision detection
+          });
+        });
+
+        totalPins = pins.length;
+      }
+
+      // Initial pin setup
+      setupPins();
+
+      // Close video button
+      closeVideo.addEventListener("click", () => {
+        videoContainer.style.display = "none";
+        strikeVideo.src = "";
+      });
+
+      // Play strike/spare video
+      function playCelebrationVideo() {
+        strikeVideo.src =
+          "https://www.youtube.com/embed/rsNof6vKHTQ?autoplay=1";
+        videoContainer.style.display = "flex";
+      }
+
+      // Variables for smooth rotation
+      let isRotatingLeft = false;
+      let isRotatingRight = false;
+      const rotationSpeed = 0.05; // Radians per frame
+
+      // Control the ball's movement with smooth rotation
+      document.getElementById("leftBtn").addEventListener("mousedown", () => {
+        if (!ball.moving) {
+          isRotatingLeft = true;
+        }
+      });
+
+      document.getElementById("leftBtn").addEventListener("mouseup", () => {
+        isRotatingLeft = false;
+      });
+
+      document.getElementById("rightBtn").addEventListener("mousedown", () => {
+        if (!ball.moving) {
+          isRotatingRight = true;
+        }
+      });
+
+      document.getElementById("rightBtn").addEventListener("mouseup", () => {
+        isRotatingRight = false;
+      });
+
+      // Also stop rotation when mouse leaves the button
+      document.getElementById("leftBtn").addEventListener("mouseleave", () => {
+        isRotatingLeft = false;
+      });
+
+      document.getElementById("rightBtn").addEventListener("mouseleave", () => {
+        isRotatingRight = false;
+      });
+
+      // Detect mouse down and up for dragging ball (only if the ball is not moving)
+      canvas.addEventListener("mousedown", (e) => {
+        if (ball.moving) return; // Prevent dragging if the ball is moving
+
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const dx = mouseX - ball.x;
+        const dy = mouseY - ball.y;
+        if (Math.sqrt(dx * dx + dy * dy) < ball.radius) {
+          ball.isDragging = true;
+        }
+      });
+
+      canvas.addEventListener("mouseup", () => {
+        ball.isDragging = false;
+      });
+
+      canvas.addEventListener("mousemove", (e) => {
+        if (ball.isDragging && !ball.moving) {
+          const rect = canvas.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          ball.x = mouseX;
+          ball.y = mouseY;
+
+          // Update angle based on mouse position
+          const dx = ball.x - mouseX;
+          const dy = ball.y - mouseY;
+          ball.angle = Math.atan2(dy, dx);
+        }
+      });
+
+      function rollBall() {
+        if (!ball.moving && !ball.isDragging) {
+          ball.moving = true;
+          // Record current pinsHit for this roll
+          const startPinsHit = pinsHit;
+
+          // If this is a new frame, reset the isSpare flag
+          if (isFirstRoll) {
+            isSpare = false;
+            rollHistory = [];
+          }
+        }
+      }
+
+      function drawBall() {
+        ctx.save();
+        ctx.translate(ball.x, ball.y);
+
+        // Apply rotation when the ball is moving
+        ctx.rotate(ball.rotation);
+
+        // Draw the ball
+        ctx.beginPath();
+        ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "white";
+        ctx.fill();
+
+        // Draw 3 holes to make it look more like a bowling ball
+        ctx.fillStyle = "#333";
+        ctx.beginPath();
+        ctx.arc(-7, -4, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(6, -5, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 7, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      function drawArrow() {
+        const arrowLength = 50; // Length of the arrow
+        const arrowX = ball.x + Math.cos(ball.angle) * arrowLength;
+        const arrowY = ball.y + Math.sin(ball.angle) * arrowLength;
+
+        // Draw arrow
+        ctx.beginPath();
+        ctx.moveTo(ball.x, ball.y);
+        ctx.lineTo(arrowX, arrowY);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "yellow";
+        ctx.stroke();
+
+        // Draw arrowhead
+        const arrowHeadLength = 10;
+        const angleOffset = Math.PI / 6;
+        ctx.beginPath();
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(
+          arrowX - arrowHeadLength * Math.cos(ball.angle - angleOffset),
+          arrowY - arrowHeadLength * Math.sin(ball.angle - angleOffset)
+        );
+        ctx.moveTo(arrowX, arrowY);
+        ctx.lineTo(
+          arrowX - arrowHeadLength * Math.cos(ball.angle + angleOffset),
+          arrowY - arrowHeadLength * Math.sin(ball.angle + angleOffset)
+        );
+        ctx.stroke();
+      }
+
+      function drawPins() {
+        pins.forEach((pin) => {
+          if (!pin.fallen) {
+            // Draw pin that looks like the bowling pin in the image
+            ctx.save();
+            ctx.translate(pin.x + 10, pin.y);
+
+            // Main body of the pin (white)
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.moveTo(0, 0); // Top middle
+            ctx.bezierCurveTo(-2, 5, -5, 10, -7, 15); // Left curve down
+            ctx.lineTo(-5, 25); // Left side of base
+            ctx.lineTo(5, 25); // Bottom
+            ctx.lineTo(7, 15); // Right side of base
+            ctx.bezierCurveTo(5, 10, 2, 5, 0, 0); // Right curve up
+            ctx.closePath();
+            ctx.fill();
+
+            // Red stripe
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.moveTo(-5, 8);
+            ctx.lineTo(5, 8);
+            ctx.lineTo(6, 12);
+            ctx.lineTo(-6, 12);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+          } else {
+            // Fallen pin (lying down)
+            ctx.save();
+            ctx.translate(pin.x + 10, pin.y + 10);
+            ctx.rotate(pin.rotation);
+
+            // Draw the fallen pin
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 15, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Red stripe on fallen pin
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 15, 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+          }
+        });
+      }
+
+      function updateScore() {
+        scoreDisplay.textContent = `Pins Hit: ${pinsHit}`;
+      }
+
+      function checkCollision() {
+        let newPinsHit = 0;
+
+        // Check ball-to-pin collisions
+        pins.forEach((pin) => {
+          if (!pin.fallen) {
+            const dx = ball.x - (pin.x + 10);
+            const dy = ball.y - (pin.y + 10);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < ball.radius + pinRadius) {
+              // Calculate the direction of the hit
+              const hitAngle = Math.atan2(dy, dx);
+
+              // Apply velocity to the pin based on the ball's direction
+              pin.dx = Math.cos(hitAngle) * ball.speed * 0.5;
+              pin.dy = Math.sin(hitAngle) * ball.speed * 0.5 + pinLift; // Apply upward force + directional force
+
+              pin.fallen = true; // Pin has fallen
+              pin.rotation = Math.random() * Math.PI * 2; // Random rotation angle
+              newPinsHit++;
+            }
+          }
+        });
+
+        // Check pin-to-pin collisions
+        pins.forEach((pin1, i) => {
+          if (pin1.fallen) return; // Skip already fallen pins
+
+          pins.forEach((pin2, j) => {
+            if (i === j || pin2.fallen) return; // Skip self or already fallen pins
+
+            // Calculate distance between pins
+            const dx = pin1.x + 10 - (pin2.x + 10);
+            const dy = pin1.y + 10 - (pin2.y + 10);
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            // If pins are close enough, make the second pin fall
+            if (distance < pinRadius * 2.5) {
+              // Increased collision area for pin-to-pin
+              const hitAngle = Math.atan2(dy, dx);
+
+              // Transfer momentum
+              pin2.dx = Math.cos(hitAngle) * 3 + pin1.dx * 0.7;
+              pin2.dy = Math.sin(hitAngle) * 3 + pin1.dy * 0.7;
+
+              pin2.fallen = true;
+              pin2.rotation = Math.random() * Math.PI * 2;
+              newPinsHit++;
+            }
+          });
+        });
+
+        if (newPinsHit > 0) {
+          pinsHit += newPinsHit;
+          updateScore();
+
+          // Check conditions for celebrations
+          checkStrikeOrSpare();
+        }
+      }
+
+      function checkStrikeOrSpare() {
+        const allPinsDown = pins.every((pin) => pin.fallen);
+
+        // STRIKE: All pins down on first roll
+        if (allPinsDown && isFirstRoll && pinsHit === totalPins) {
+          setTimeout(() => {
+            playCelebrationVideo();
+          }, 500);
+          isFirstRoll = false;
+        }
+        // SPARE: All pins down on second roll
+        else if (allPinsDown && !isFirstRoll) {
+          isSpare = true;
+          setTimeout(() => {
+            playCelebrationVideo();
+          }, 500);
+        }
+      }
+
+      function handleBallEdgeCollision() {
+        // Bounce off left and right edges
+        if (ball.x - ball.radius < 0) {
+          ball.x = ball.radius;
+          ball.angle = Math.PI - ball.angle; // Reverse direction horizontally
+        }
+        if (ball.x + ball.radius > canvas.width) {
+          ball.x = canvas.width - ball.radius;
+          ball.angle = Math.PI - ball.angle; // Reverse direction horizontally
+        }
+
+        // Bounce off top and bottom edges
+        if (ball.y - ball.radius < 0) {
+          ball.y = ball.radius;
+          ball.angle = -ball.angle; // Reverse direction vertically
+        }
+        if (ball.y + ball.radius > canvas.height) {
+          ball.y = canvas.height - ball.radius;
+          ball.angle = -ball.angle; // Reverse direction vertically
+        }
+      }
+
+      function resetGame() {
+        // Reset the ball
+        ball.moving = false;
+        ball.speed = 15;
+        ball.x = 200;
+        ball.y = 550;
+        ball.rotation = 0;
+
+        // Reset the pins
+        setupPins();
+
+        // Reset score and frame tracking
+        pinsHit = 0;
+        isFirstRoll = true;
+        isSpare = false;
+        rollHistory = [];
+        updateScore();
+
+        // Stop any playing video
+        videoContainer.style.display = "none";
+        strikeVideo.src = "";
+      }
+
+      function prepareMidFrameReset() {
+        // Record pins hit in the first roll
+        rollHistory.push(pinsHit);
+
+        // Set up for second roll
+        isFirstRoll = false;
+
+        // We don't fully reset pins, just remember which ones are down
+        // for the second roll
+      }
+
+      function update() {
+        // Handle smooth rotation
+        if (isRotatingLeft && !ball.moving) {
+          ball.angle -= rotationSpeed;
+        }
+        if (isRotatingRight && !ball.moving) {
+          ball.angle += rotationSpeed;
+        }
+
+        if (ball.moving) {
+          // Update position based on angle
+          ball.x += Math.cos(ball.angle) * ball.speed;
+          ball.y += Math.sin(ball.angle) * ball.speed;
+
+          // Apply friction to the ball's speed
+          ball.speed *= ball.friction;
+
+          // Rotate the ball based on its movement
+          // The rotation speed is proportional to the ball's forward speed
+          // We use a negative value for clockwise rotation as the ball rolls forward
+          const rotationFactor = 0.15; // Adjust this for faster/slower rotation
+          ball.rotation += rotationFactor * ball.speed;
+
+          // If the ball slows down enough, stop moving
+          if (ball.speed < 0.1) {
+            ball.moving = false;
+            ball.speed = 15; // Reset speed for the next roll
+
+            // Prepare for second roll or new frame
+            if (isFirstRoll) {
+              prepareMidFrameReset();
+            } else {
+              // After second roll, start a new frame on next roll
+              isFirstRoll = true;
+            }
+
+            setTimeout(() => {
+              ball.x = 200;
+              ball.y = 550; // Reset ball position for next roll
+            }, 500);
+          }
+
+          checkCollision();
+        }
+
+        // Apply physics to fallen pins
+        pins.forEach((pin) => {
+          if (pin.fallen) {
+            // Apply gravity
+            pin.dy += gravity;
+
+            // Update position based on velocity
+            pin.x += pin.dx;
+            pin.y += pin.dy;
+
+            // Apply friction to pin's horizontal movement
+            pin.dx *= 0.95;
+
+            // Make pin spin
+            pin.rotation += 0.1;
+
+            // Pin-wall collisions
+            if (pin.x < 0 || pin.x > canvas.width - 20) {
+              pin.dx *= -0.7; // Bounce with energy loss
+            }
+          }
+        });
+
+        // Handle ball-edge collision (bounce off)
+        handleBallEdgeCollision();
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBall();
+        drawPins();
+        if (!ball.moving) {
+          drawArrow();
+        }
+      }
+
+      function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+      }
+
+      gameLoop();
+    </script>
+  </body>
+</html>

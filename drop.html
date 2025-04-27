@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sprite Fall with Sideways Rolling</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+            overflow: hidden;
+            position: relative;
+        }
+        #game-area {
+            position: relative;
+            width: 100%;
+            height: 80vh;
+        }
+        .sprite {
+            position: absolute;
+            top: -50px; /* Start above the visible area */
+            width: 50px;
+            height: 50px;
+            background-color: red;
+            border-radius: 50%; /* Make it a circle */
+        }
+        .obstacle {
+            position: absolute;
+            width: 120px;
+            height: 20px;
+            background-color: green;
+        }
+        #fallButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            z-index: 100;
+        }
+        #fallButton:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-area">
+    <!-- Obstacles will be created dynamically -->
+</div>
+<button id="fallButton">Make the Sprite Fall</button>
+
+<script>
+    const gameArea = document.getElementById('game-area');
+    const button = document.getElementById('fallButton');
+    const gameHeight = gameArea.offsetHeight;
+    const gameWidth = gameArea.offsetWidth;
+    const gravity = 0.3;
+    const bounceFactor = 0.6;
+    const friction = 0.98;
+    const obstacleCount = 5;  // Increased number of obstacles
+
+    // Create obstacles
+    for (let i = 0; i < obstacleCount; i++) {
+        createObstacle(i);
+    }
+
+    function createObstacle(index) {
+        const obstacle = document.createElement('div');
+        obstacle.classList.add('obstacle');
+        gameArea.appendChild(obstacle);
+
+        // Space obstacles across the screen
+        const sectionHeight = gameHeight / (obstacleCount + 1);
+        const randomTop = (index + 1) * sectionHeight - 10;
+        const randomLeft = Math.random() * (gameWidth - 120);
+        
+        obstacle.style.left = `${randomLeft}px`;
+        obstacle.style.top = `${randomTop}px`;
+    }
+
+    button.addEventListener('click', () => {
+        createFallingSprite();
+    });
+
+    function createFallingSprite() {
+        const sprite = document.createElement('div');
+        sprite.classList.add('sprite');
+        gameArea.appendChild(sprite);
+
+        const randomLeft = Math.random() * (gameWidth - 50);
+        sprite.style.left = `${randomLeft}px`;
+
+        let velocityX = 0;
+        let velocityY = 0;
+        let posY = -50;
+        let posX = randomLeft;
+        let rotation = 0;
+        let active = true;
+
+        function fall() {
+            if (!active) return;
+
+            // Update velocities
+            velocityY += gravity;
+            velocityX *= friction;
+            
+            // Update positions
+            posY += velocityY;
+            posX += velocityX;
+            
+            // Check boundary collisions (sides of screen)
+            if (posX < 0) {
+                posX = 0;
+                velocityX = -velocityX * 0.7;
+            } else if (posX > gameWidth - 50) {
+                posX = gameWidth - 50;
+                velocityX = -velocityX * 0.7;
+            }
+            
+            // Apply new positions
+            sprite.style.top = `${posY}px`;
+            sprite.style.left = `${posX}px`;
+            
+            // Update rotation for rolling effect
+            rotation += velocityX * 3;
+            sprite.style.transform = `rotate(${rotation}deg)`;
+            
+            // Check collisions with obstacles
+            const obstacles = document.querySelectorAll('.obstacle');
+            for (let obstacle of obstacles) {
+                const obstacleRect = obstacle.getBoundingClientRect();
+                const spriteRect = sprite.getBoundingClientRect();
+                
+                if (checkCollision(
+                    spriteRect.left, spriteRect.top, 
+                    spriteRect.width, spriteRect.height,
+                    obstacleRect.left, obstacleRect.top, 
+                    obstacleRect.width, obstacleRect.height
+                )) {
+                    handleCollision(obstacleRect);
+                    break;
+                }
+            }
+            
+            // Check if reached bottom
+            if (posY + 50 >= gameHeight) {
+                posY = gameHeight - 50;
+                velocityY = 0;
+                velocityX *= 0.8;
+                
+                if (Math.abs(velocityX) < 0.1) {
+                    active = false;
+                }
+            }
+            
+            // Continue animation if still active
+            if (active) {
+                requestAnimationFrame(fall);
+            }
+        }
+
+        // Collision detection using rectangles
+        function checkCollision(x1, y1, w1, h1, x2, y2, w2, h2) {
+            return (x1 < x2 + w2 &&
+                    x1 + w1 > x2 &&
+                    y1 < y2 + h2 &&
+                    y1 + h1 > y2);
+        }
+
+        // Handle collision with obstacle
+        function handleCollision(obstacleRect) {
+            const spriteBottom = posY + 50;
+            const spriteCenterX = posX + 25;
+            const obstacleCenterX = obstacleRect.left + (obstacleRect.width / 2);
+            
+            // Top collision
+            if (spriteBottom - velocityY <= obstacleRect.top && spriteBottom >= obstacleRect.top) {
+                velocityY = -velocityY * bounceFactor;
+                
+                // Generate sideways movement based on hit location
+                const hitPosition = (spriteCenterX - obstacleCenterX) / (obstacleRect.width / 2);
+                velocityX += hitPosition * 2.5;
+                
+                posY = obstacleRect.top - 50;
+            }
+            // Side collision
+            else if (spriteCenterX < obstacleCenterX) {
+                // Hit from left
+                velocityX = -Math.abs(velocityX) - 1;
+                posX = obstacleRect.left - 50;
+            } else {
+                // Hit from right
+                velocityX = Math.abs(velocityX) + 1;
+                posX = obstacleRect.left + obstacleRect.width;
+            }
+        }
+
+        // Start the animation
+        fall();
+    }
+</script>
+
+</body>
+</html>
